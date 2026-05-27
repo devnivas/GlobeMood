@@ -292,3 +292,105 @@ export function getGlobalSentiment(): number {
   const avg = countries.reduce((sum, c) => sum + c.sentiment, 0) / countries.length;
   return Math.round(avg * 100) / 100;
 }
+
+/**
+ * Compute sentiment and stats for articles
+ */
+export function computeArticleStats(articles: NewsArticle[]) {
+  if (articles.length === 0) {
+    return {
+      avgSentiment: 0,
+      sentimentByCountry: {},
+      sentimentByCategory: {},
+      emotionDistribution: {
+        joy: 0,
+        fear: 0,
+        sadness: 0,
+        anger: 0,
+      },
+      topKeywords: [],
+    };
+  }
+
+  // Average sentiment
+  const avgSentiment = articles.reduce((sum, a) => sum + a.sentiment, 0) / articles.length;
+
+  // Sentiment by country
+  const sentimentByCountry: Record<string, { sum: number; count: number }> = {};
+  articles.forEach((article) => {
+    if (!sentimentByCountry[article.countryCode]) {
+      sentimentByCountry[article.countryCode] = { sum: 0, count: 0 };
+    }
+    sentimentByCountry[article.countryCode].sum += article.sentiment;
+    sentimentByCountry[article.countryCode].count += 1;
+  });
+
+  // Sentiment by category
+  const sentimentByCategory: Record<Category, { sum: number; count: number }> = {
+    business: { sum: 0, count: 0 },
+    tech: { sum: 0, count: 0 },
+    science: { sum: 0, count: 0 },
+    health: { sum: 0, count: 0 },
+  };
+  articles.forEach((article) => {
+    sentimentByCategory[article.category].sum += article.sentiment;
+    sentimentByCategory[article.category].count += 1;
+  });
+
+  // Emotion distribution
+  const emotionDistribution: Record<Emotion, number> = {
+    joy: 0,
+    fear: 0,
+    sadness: 0,
+    anger: 0,
+  };
+  articles.forEach((article) => {
+    emotionDistribution[article.emotion]++;
+  });
+
+  // Top keywords
+  const keywordFreq: Record<string, number> = {};
+  articles.forEach((article) => {
+    article.keywords.forEach((kw) => {
+      keywordFreq[kw] = (keywordFreq[kw] || 0) + 1;
+    });
+  });
+  const topKeywords = Object.entries(keywordFreq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15)
+    .map(([word, frequency]) => ({
+      word,
+      frequency,
+      sentiment: articles
+        .filter((a) => a.keywords.includes(word))
+        .reduce((sum, a) => sum + a.sentiment, 0) /
+        articles.filter((a) => a.keywords.includes(word)).length || 0,
+    }));
+
+  return {
+    avgSentiment: Math.round(avgSentiment * 100) / 100,
+    sentimentByCountry,
+    sentimentByCategory,
+    emotionDistribution,
+    topKeywords,
+  };
+}
+
+/**
+ * Update country data based on articles
+ */
+export function updateCountrySentiment(articles: NewsArticle[]): CountryData[] {
+  const stats = computeArticleStats(articles);
+
+  return countries.map((country) => {
+    const countryStats = stats.sentimentByCountry[country.code];
+    if (countryStats && countryStats.count > 0) {
+      return {
+        ...country,
+        sentiment: Math.round((countryStats.sum / countryStats.count) * 100) / 100,
+        articleCount: countryStats.count,
+      };
+    }
+    return country;
+  });
+}

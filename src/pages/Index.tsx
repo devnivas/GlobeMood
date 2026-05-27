@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion } from "framer-motion";
-import { Globe, Zap } from "lucide-react";
+import { Globe, Zap, RefreshCw } from "lucide-react";
 import { SearchPanel } from "@/components/dashboard/SearchPanel";
 import { NewsFeed } from "@/components/dashboard/NewsFeed";
 import { WorldHeatmap } from "@/components/dashboard/WorldHeatmap";
@@ -8,20 +8,23 @@ import { SentimentGauge } from "@/components/dashboard/SentimentGauge";
 import { TopicCloud } from "@/components/dashboard/TopicCloud";
 import { StatsBar } from "@/components/dashboard/StatsBar";
 import {
-  newsArticles,
   countries,
   trendingTopics,
   getGlobalSentiment,
+  updateCountrySentiment,
+  computeArticleStats,
   type Category,
 } from "@/data/mockData";
+import { useLiveNews } from "@/hooks/useLiveNews";
 
 const Index = () => {
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("all");
   const [category, setCategory] = useState<Category | "all">("all");
+  const { articles, isLoading, isLive, refetch } = useLiveNews();
 
   const filteredArticles = useMemo(() => {
-    return newsArticles.filter((article) => {
+    return articles.filter((article) => {
       const matchesSearch =
         !search ||
         article.title.toLowerCase().includes(search.toLowerCase()) ||
@@ -30,9 +33,17 @@ const Index = () => {
       const matchesCategory = category === "all" || article.category === category;
       return matchesSearch && matchesCountry && matchesCategory;
     });
-  }, [search, country, category]);
+  }, [search, country, category, articles]);
 
-  const globalSentiment = getGlobalSentiment();
+  // Update country sentiments based on articles
+  const updatedCountries = useMemo(() => {
+    return updateCountrySentiment(articles);
+  }, [articles]);
+
+  const globalSentiment = useMemo(() => {
+    const stats = computeArticleStats(articles);
+    return stats.avgSentiment;
+  }, [articles]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -58,10 +69,19 @@ const Index = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => refetch()}
+                disabled={isLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border/50 hover:bg-surface-2 transition-colors disabled:opacity-50"
+                title="Refresh news feed"
+              >
+                <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Zap className="h-3 w-3 text-sentiment-positive" />
-                <span className="hidden sm:inline font-mono">Live</span>
+                <span className="hidden sm:inline font-mono">{isLive ? "Live" : "Demo"}</span>
               </span>
               <span className="h-2 w-2 rounded-full bg-sentiment-positive animate-pulse" />
             </div>
@@ -88,7 +108,7 @@ const Index = () => {
         </motion.div>
 
         {/* Stats Bar */}
-        <StatsBar articles={filteredArticles} countries={countries} />
+        <StatsBar articles={filteredArticles} countries={updatedCountries} />
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -99,7 +119,7 @@ const Index = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2, duration: 0.5 }}
             >
-              <WorldHeatmap countries={countries} />
+              <WorldHeatmap countries={updatedCountries} />
             </motion.div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -141,7 +161,7 @@ const Index = () => {
             GlobeMood v1.0 · Powered by AI Sentiment Analysis
           </p>
           <p className="text-[10px] text-muted-foreground font-mono">
-            {countries.length} countries · {newsArticles.length} articles tracked
+            {updatedCountries.length} countries · {articles.length} articles tracked {isLive && "(Live)"}
           </p>
         </div>
       </footer>
